@@ -18,6 +18,15 @@ jobs:
           path: original
       - name: Apply clipboard and crash trace fixes
         run: python3 patches/crashfix.py
+      - name: Restore practical knowledge resources to host App only
+        run: |
+          mkdir -p original/KnowledgeLibrary
+          cp -R original/Resources/GoutouKnowledge/practical original/KnowledgeLibrary/practical
+          test "$(find original/KnowledgeLibrary/practical -type f -name '*.md' | wc -l | tr -d ' ')" -eq 23
+      - name: Test message parsing and prompt memory before packaging
+        run: |
+          swiftc -o /tmp/goutou_fusion_smoke original/Shared/GoutouBrain.swift original/Shared/GoutouSegmentBuilder.swift original/Keyboard/Sources/GoutouStableMemory.swift tests/FusionSmoke.swift
+          /tmp/goutou_fusion_smoke
       - name: Install XcodeGen
         run: brew install xcodegen
       - name: Generate project
@@ -35,11 +44,35 @@ jobs:
           /usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$EXT/Info.plist" | grep -Fx com.apple.keyboard-service
           /usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionAttributes:PrimaryLanguage' "$EXT/Info.plist" | grep -Fx en-US
           test -f "$EXT/GoutouSkill.md"
+          test -d "$APP/KnowledgeLibrary/practical"
+          test "$(find "$APP/KnowledgeLibrary/practical" -type f -name '*.md' | wc -l | tr -d ' ')" -eq 23
+          test "$(stat -f%z "$EXT/GoutouSkill.md")" -gt 4000
+          echo "PAYLOAD_VALIDATION_PASS: 23 App knowledge docs, 5 KB skill, main executable and keyboard"
       - name: Package unsigned IPA
         run: |
           mkdir Payload
           cp -R original/build/Build/Products/Release-iphoneos/JevJarvis.app Payload/
           zip -qr Jev-v2-Clipboard-CrashFix-unsigned.ipa Payload
+      - name: Inspect final IPA zip, identity and resources
+        run: |
+          python3 - <<'PY'
+          import zipfile, plistlib, os
+          path="Jev-v2-Clipboard-CrashFix-unsigned.ipa"
+          with zipfile.ZipFile(path) as z:
+              assert z.testzip() is None
+              names=z.namelist()
+              root="Payload/JevJarvis.app/"
+              app=plistlib.loads(z.read(root+"Info.plist"))
+              ext=plistlib.loads(z.read(root+"PlugIns/JevKeyboard.appex/Info.plist"))
+              assert app["CFBundleIdentifier"] == "com.jevchat.jarvis"
+              assert ext["CFBundleIdentifier"] == "com.jevchat.jarvis.keyboard"
+              assert ext["NSExtension"]["NSExtensionPointIdentifier"] == "com.apple.keyboard-service"
+              assert ext["NSExtension"]["NSExtensionAttributes"]["PrimaryLanguage"] == "en-US"
+              guides=[n for n in names if n.startswith(root+"KnowledgeLibrary/practical/") and n.endswith(".md")]
+              assert len(guides)==23, f"Missing App resources: {len(guides)}"
+              assert len(z.read(root+"PlugIns/JevKeyboard.appex/GoutouSkill.md"))>4000
+              print("FINAL_IPA_PASS",os.path.getsize(path),"bytes","practical guides:",len(guides))
+          PY
       - uses: actions/upload-artifact@v4
         with:
           name: Jev-v2-Clipboard-CrashFix-unsigned-IPA
