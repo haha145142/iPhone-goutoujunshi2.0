@@ -149,4 +149,17 @@ swap(brain,"不要把候选压到 2～3 条。","始终给恰好三条，不要�
 swap(brain,'''            Self.realismRules,''','''            Self.realismRules,
             "补充要求：像真人发微信，不要套话、咨询师口吻和每句反问。先看事实再作不确定推断，严禁脑补爱情或编造承诺。",''')
 swap(client,"static let maxTokens = 8192","static let maxTokens = 3600")
-print("CRASHFIX_PATCH_OK")
+# The v2 IPA contains a KnowledgeLibrary of browsable practical guides.
+# The v2 source has the material in Resources/, but accidentally left it out
+# of its App target. Include this only in the host App, NOT the memory-limited keyboard.
+project=root/"project.yml"
+meta=project.read_text(encoding="utf-8")
+needle='''      - path: App/Assets.xcassets
+      - path: Shared'''
+if meta.count(needle)!=1: raise RuntimeError("project App sources changed")
+meta=meta.replace(needle, '''      - path: App/Assets.xcassets
+      - path: Shared
+      - path: KnowledgeLibrary
+        type: folder''', 1)
+project.write_text(meta,encoding="utf-8")
+print("CRASHFIX_PATCH_OK: Jev v2 source, keyboard crash breadcrumb, app-only resource fix")
