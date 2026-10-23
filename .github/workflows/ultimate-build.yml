@@ -4,7 +4,6 @@ on:
     branches: [ultimate]
     paths:
       - JevJarvis-Ultimate-source.zip
-      - .github/workflows/ultimate-build.yml
   workflow_dispatch:
 permissions:
   contents: read
