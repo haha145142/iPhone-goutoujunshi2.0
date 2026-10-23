@@ -27,10 +27,10 @@ targets:
     type: app-extension
     platform: iOS
     sources: [Keyboard, Shared]
-    info:
-      path: Keyboard/Info.plist
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.jev.keyboard2.extension
         CODE_SIGN_ENTITLEMENTS: Keyboard/Keyboard.entitlements
         APPLICATION_EXTENSION_API_ONLY: YES
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Keyboard/Info.plist
