@@ -40,7 +40,7 @@ enum GoutouSkillFusion {
     }()
 }
 ''',encoding="utf8")
-swap("Shared/JevDraft.swift","        狗头军师规则:","        狗头军师666实际技能：\n        \\(GoutouSkillFusion.rules)\n        狗头军师规则:")
+swap("Shared/JevDraft.swift","        狗头军师规则：","        狗头军师666实际技能：\n        \\(GoutouSkillFusion.rules)\n        狗头军师规则：")
 swap("Shared/JevContext.swift","        t.append(ChatTurn(speaker: speaker, text: text))\n        _persist(t)",'''        let clean = String(text.prefix(1400))
         let now = Date()
         let duplicate = t.suffix(8).contains {
