@@ -4,6 +4,8 @@ on:
     branches: [ultimate]
     paths:
       - JevJarvis-Ultimate-source.zip
+      - patches/fix_doubao.py
+      - .github/workflows/ultimate-build.yml
   workflow_dispatch:
 permissions:
   contents: read
@@ -37,6 +39,8 @@ jobs:
               assert (root/name).is_file(),name
           print("DOUBAO_ZIP_OK",archive.stat().st_size)
           PY
+      - name: Apply minimal Doubao source compilation fix
+        run: python3 patches/fix_doubao.py
       - name: Install XcodeGen
         run: |
           if ! command -v xcodegen >/dev/null 2>&1; then brew install xcodegen; fi
