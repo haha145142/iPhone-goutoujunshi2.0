@@ -1,1 +1,1 @@
-融合版本：真实 JevJarvis iOS 键盘工程为基础，整合用户提供的 666.ipa 中 GoutouSkill 的关系判断原则及本地最近16条消息记忆。保留原工程键盘 UI。当前无法证明与 555.ipa 完全像素一致，因为 555.ipa 没有完整对应源码。编译为无签名 IPA；需要正确签名主 App + 扩展。源码和构建记录请看 .github/workflows/build.yml。
+作者原版 Jev iOS UI + 666 真人聊天策略融合。通过 patches/original_666.py 修改作者工程 Shared/JevPrompts.swift 和 Shared/JevContext.swift，不重写 UI。保留原有知识库、键盘扩展、配置方式。当前是无签名 IPA；不保证全能签签名安装。更优质回复需模型配置与实际聊天上下文配合，不能用 Prompt 保证所有对话天然聪明。
