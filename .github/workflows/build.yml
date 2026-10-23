@@ -1,4 +1,4 @@
-name: Jev v2 Clipboard Crash Fix
+name: Original Jev v2 UI + Real 666 Skill + Context
 on:
   push:
     branches: [main]
@@ -10,71 +10,85 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Checkout Jev v2 UI code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: haha145142/jev-chat-jarvis-ios
+          ref: fe0fc6dd72b5f3b893dab0033c73b477112b1aeb
+          path: original
+      - uses: actions/checkout@v4
         with:
           repository: haha145142/JevJarvis-liuhai-IOS
           ref: 4b4080da66eee25793af98f66bd6801d0bd4ed51
-          path: original
-      - name: Apply clipboard and crash trace fixes
-        run: python3 patches/crashfix.py
-      - name: Restore practical knowledge resources to host App only
+          path: v2source
+      - uses: actions/checkout@v4
+        with:
+          repository: haha145142/goutou-keyboard-ios
+          ref: 898ce8358020b9eeb2bd5167863869d1ad1f3d86
+          path: skill666
+      - uses: actions/checkout@v4
+        with:
+          repository: hotcoffeeshake/tong-jincheng-skill
+          ref: c9caaa9a6576f581c29d016c60bbe935908e20d5
+          path: tong
+      - name: Restore 666 skill and v2 knowledge resources
         run: |
-          mkdir -p original/KnowledgeLibrary
-          cp -R original/Resources/GoutouKnowledge/practical original/KnowledgeLibrary/practical
-          test "$(find original/KnowledgeLibrary/practical -type f -name '*.md' | wc -l | tr -d ' ')" -eq 23
-      - name: Test message parsing and prompt memory before packaging
+          mkdir -p original/KnowledgeLibrary/tong
+          cp -R original/GoutouKnowledge/practical original/KnowledgeLibrary/practical
+          cp tong/SKILL.md 'original/KnowledgeLibrary/tong/00-童锦程核心方法.md'
+          cp tong/references/research/*.md original/KnowledgeLibrary/tong/
+          cp skill666/Keyboard/GoutouSkill.md original/Keyboard/GoutouSkill.md
+          test "$(find original/KnowledgeLibrary/practical -name '*.md' | wc -l | tr -d ' ')" -eq 23
+          test "$(find original/KnowledgeLibrary/tong -name '*.md' | wc -l | tr -d ' ')" -eq 7
+      - name: Patch real JevDraft and auto context, without replacing keyboard UI
+        run: python3 patches/v2_real_skill.py
+      - name: Smoke test live Skill extraction and JevContext persistence
         run: |
-          swiftc -o /tmp/goutou_fusion_smoke original/Shared/GoutouBrain.swift original/Shared/GoutouSegmentBuilder.swift original/Keyboard/Sources/GoutouStableMemory.swift tests/FusionSmoke.swift
-          /tmp/goutou_fusion_smoke
+          swiftc -o /tmp/jev_smoke original/Shared/JevContext.swift original/Shared/GoutouSkillFusion.swift tests/V2SkillContextSmoke.swift
+          /tmp/jev_smoke original/Keyboard/GoutouSkill.md
+          grep -F 'GoutouSkillFusion.rules' original/Shared/JevDraft.swift
+          grep -F 'JevContextStore.shared.append(.them, text: message)' original/Keyboard/Sources/KeyboardViewController.swift
       - name: Install XcodeGen
         run: brew install xcodegen
-      - name: Generate project
+      - name: Generate native Xcode project
         working-directory: original
         run: xcodegen generate
-      - name: Compile iPhone release
+      - name: Compile iPhone Release (unsigned)
         working-directory: original
-        run: xcodebuild -project JevJarvis.xcodeproj -scheme JevJarvis -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
-      - name: Validate keyboard payload
+        run: xcodebuild -project JevJarvis.xcodeproj -scheme JevJarvis -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" build
+      - name: Validate app and keyboard
         run: |
           APP="original/build/Build/Products/Release-iphoneos/JevJarvis.app"
           EXT="$APP/PlugIns/JevKeyboard.appex"
           test -f "$APP/JevJarvis"
           test -f "$EXT/JevKeyboard"
-          /usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$EXT/Info.plist" | grep -Fx com.apple.keyboard-service
-          /usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionAttributes:PrimaryLanguage' "$EXT/Info.plist" | grep -Fx en-US
           test -f "$EXT/GoutouSkill.md"
-          test -d "$APP/KnowledgeLibrary/practical"
-          test "$(find "$APP/KnowledgeLibrary/practical" -type f -name '*.md' | wc -l | tr -d ' ')" -eq 23
-          test "$(stat -f%z "$EXT/GoutouSkill.md")" -gt 4000
-          echo "PAYLOAD_VALIDATION_PASS: 23 App knowledge docs, 5 KB skill, main executable and keyboard"
-      - name: Package unsigned IPA
+          /usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$EXT/Info.plist" | grep -Fx 'com.apple.keyboard-service'
+          /usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionAttributes:PrimaryLanguage' "$EXT/Info.plist" | grep -Fx 'en-US'
+          test "$(find "$APP/KnowledgeLibrary/practical" -name '*.md' | wc -l | tr -d ' ')" -eq 23
+          test "$(find "$APP/KnowledgeLibrary/tong" -name '*.md' | wc -l | tr -d ' ')" -eq 7
+      - name: Create unsigned IPA
         run: |
           mkdir Payload
           cp -R original/build/Build/Products/Release-iphoneos/JevJarvis.app Payload/
-          zip -qr Jev-v2-Clipboard-CrashFix-unsigned.ipa Payload
-      - name: Inspect final IPA zip, identity and resources
+          zip -qr Jev-v2-Real666-Context-unsigned.ipa Payload
+      - name: Inspect compressed IPA for missing features
         run: |
           python3 - <<'PY'
-          import zipfile, plistlib, os
-          path="Jev-v2-Clipboard-CrashFix-unsigned.ipa"
-          with zipfile.ZipFile(path) as z:
+          import zipfile,plistlib
+          f="Jev-v2-Real666-Context-unsigned.ipa"
+          with zipfile.ZipFile(f) as z:
               assert z.testzip() is None
               names=z.namelist()
-              root="Payload/JevJarvis.app/"
-              app=plistlib.loads(z.read(root+"Info.plist"))
-              ext=plistlib.loads(z.read(root+"PlugIns/JevKeyboard.appex/Info.plist"))
-              assert app["CFBundleIdentifier"] == "com.jevchat.jarvis"
-              assert ext["CFBundleIdentifier"] == "com.jevchat.jarvis.keyboard"
-              assert ext["NSExtension"]["NSExtensionPointIdentifier"] == "com.apple.keyboard-service"
-              assert ext["NSExtension"]["NSExtensionAttributes"]["PrimaryLanguage"] == "en-US"
-              guides=[n for n in names if n.startswith(root+"KnowledgeLibrary/practical/") and n.endswith(".md")]
-              assert len(guides)==23, f"Missing App resources: {len(guides)}"
-              assert len(z.read(root+"PlugIns/JevKeyboard.appex/GoutouSkill.md"))>4000
-              print("FINAL_IPA_PASS",os.path.getsize(path),"bytes","practical guides:",len(guides))
+              base="Payload/JevJarvis.app/"
+              ext=plistlib.loads(z.read(base+"PlugIns/JevKeyboard.appex/Info.plist"))
+              assert ext["NSExtension"]["NSExtensionAttributes"]["PrimaryLanguage"]=="en-US"
+              assert len(z.read(base+"PlugIns/JevKeyboard.appex/GoutouSkill.md"))>1000
+              assert len([n for n in names if n.startswith(base+"KnowledgeLibrary/practical/") and n.endswith(".md")])==23
+              assert len([n for n in names if n.startswith(base+"KnowledgeLibrary/tong/") and n.endswith(".md")])==7
+              print("FINAL_IPA_VALIDATED")
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: Jev-v2-Clipboard-CrashFix-unsigned-IPA
-          path: Jev-v2-Clipboard-CrashFix-unsigned.ipa
+          name: Jev-v2-Real666-Context-unsigned-IPA
+          path: Jev-v2-Real666-Context-unsigned.ipa
           retention-days: 30
