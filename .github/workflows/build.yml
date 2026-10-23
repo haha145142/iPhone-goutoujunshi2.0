@@ -1,4 +1,4 @@
-name: Build Original UI × 666 Human Replies
+name: Jev 133 Stable Fusion IPA
 on:
   push:
     branches: [main]
@@ -9,37 +9,50 @@ jobs:
   build:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Checkout original Jev iOS code
+      - name: Checkout integration project
+        uses: actions/checkout@v4
+      - name: Checkout full Jev UI source
         uses: actions/checkout@v4
         with:
           repository: haha145142/jev-chat-jarvis-ios
-          path: original
-      - name: Integrate human replies and memory fixes
-        run: python3 patches/original_666.py
+          ref: fe0fc6dd72b5f3b893dab0033c73b477112b1aeb
+          path: jev
+      - name: Checkout Goutou 133 source
+        uses: actions/checkout@v4
+        with:
+          repository: haha145142/goutou-keyboard-ios
+          ref: 898ce8358020b9eeb2bd5167863869d1ad1f3d86
+          path: goutou
+      - name: Fuse brain, memory and keyboard stability fixes
+        run: python3 patches/stable_fusion.py
       - name: Install XcodeGen
         run: brew install xcodegen
-      - name: Generate Xcode project
-        working-directory: original
+      - name: Generate full project
+        working-directory: jev
         run: xcodegen generate
-      - name: Build iOS
-        working-directory: original
-        run: xcodebuild -project JevJarvis.xcodeproj -scheme JevJarvis -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
-      - name: Validate original keyboard and resources
+      - name: Compile iPhone Release (unsigned)
+        working-directory: jev
         run: |
-          APP="original/build/Build/Products/Release-iphoneos/JevJarvis.app"
+          xcodebuild -project JevJarvis.xcodeproj -scheme JevJarvis -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+      - name: Validate full UI, bundles and crash-safe keyboard metadata
+        run: |
+          APP=jev/build/Build/Products/Release-iphoneos/JevJarvis.app
           EXT="$APP/PlugIns/JevKeyboard.appex"
           test -f "$APP/JevJarvis"
           test -f "$EXT/JevKeyboard"
-          /usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$EXT/Info.plist" | grep -Fx com.apple.keyboard-service
-          find "$EXT" -type f -name '*.md' | head -6
+          /usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$EXT/Info.plist" | grep -Fx 'com.apple.keyboard-service'
+          /usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionAttributes:PrimaryLanguage' "$EXT/Info.plist" | grep -Fx 'en-US'
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist" | grep -Fx 'com.jevchat.jarvis'
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$EXT/Info.plist" | grep -Fx 'com.jevchat.jarvis.keyboard'
+          test -d "$APP/GoutouKnowledge"
+          test ! -e "$APP/embedded.mobileprovision"
       - name: Package unsigned IPA
         run: |
           mkdir Payload
-          cp -R original/build/Build/Products/Release-iphoneos/JevJarvis.app Payload/
-          zip -qr Goutou-Original-UI-HumanReply-unsigned.ipa Payload
+          cp -R jev/build/Build/Products/Release-iphoneos/JevJarvis.app Payload/
+          zip -qr Jev-Goutou133-Stable-Fusion-unsigned.ipa Payload
       - uses: actions/upload-artifact@v4
         with:
-          name: Goutou-Original-UI-HumanReply-IPA
-          path: Goutou-Original-UI-HumanReply-unsigned.ipa
+          name: Jev-Goutou133-Stable-Fusion-unsigned-IPA
+          path: Jev-Goutou133-Stable-Fusion-unsigned.ipa
           retention-days: 30

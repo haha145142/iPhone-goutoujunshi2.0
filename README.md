@@ -1,1 +1,9 @@
-作者原版 Jev iOS UI + 666 真人聊天策略融合。通过 patches/original_666.py 修改作者工程 Shared/JevPrompts.swift 和 Shared/JevContext.swift，不重写 UI。保留原有知识库、键盘扩展、配置方式。当前是无签名 IPA；不保证全能签签名安装。更优质回复需模型配置与实际聊天上下文配合，不能用 Prompt 保证所有对话天然聪明。
+# Jev × GoutouInput 133 稳定融合
+
+基于用户现有 JevJarvis iOS UI 源码和 GoutouInput 133 狗头军师技能文件，保留 Jev 键盘操作界面、原来接口配置及知识库，并加入对话记忆改进、真人短回复策略与键盘语言兼容修复。
+
+构建复制两个已有源工程到临时目录，运行 patches/stable_fusion.py 注入最少必要修改。不包含对已签名 IPA 的二进制篡改。
+
+**注意**：上传的 JevJarvis v2.0 IPA 是已编译二进制，没有完整对应的 v1.5.0 Swift 源码；采用目前可获得的 Jev 作者源码，UI 风格保持一致，但不能承诺与 v2.0 每个细节完全相同。
+
+无签名 IPA 需自行签名；模拟器构建与 GitHub 编译不能代替用户 iPhone iOS 27.0 的真机键盘扩展测试，也不能证明分析接口的实效。聊天自动上传指把本地已记录的最近消息**在点击分析时发送给用户设置的 AI API**，绝非后台无权限读取微信历史。
