@@ -1,0 +1,39 @@
+name: Rebuilt Goutou IPA
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate project
+        run: xcodegen generate
+      - name: Build iPhone Release
+        run: |
+          xcodebuild -project Goutou2.xcodeproj -scheme Goutou2 -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath output CODE_SIGNING_ALLOWED=NO build
+      - name: Validate IPA payload
+        run: |
+          APP="output/Build/Products/Release-iphoneos/Goutou2.app"
+          EXT="$APP/PlugIns/GoutouKeyboard.appex"
+          test -f "$APP/Goutou2"
+          test -f "$EXT/GoutouKeyboard"
+          test -f "$EXT/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist" | grep -Fx com.4OXM.B3xQO
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$EXT/Info.plist" | grep -Fx com.4OXM.B3xQO.keyboard
+          /usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$EXT/Info.plist" | grep -Fx com.apple.keyboard-service
+          test ! -e "$APP/embedded.mobileprovision"
+          test ! -e "$EXT/embedded.mobileprovision"
+      - name: Create IPA
+        run: |
+          mkdir Payload
+          cp -R output/Build/Products/Release-iphoneos/Goutou2.app Payload/
+          zip -qr Goutou2-unsigned.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Goutou2-Rebuilt-Unsigned-IPA
+          path: Goutou2-unsigned.ipa
+          retention-days: 30

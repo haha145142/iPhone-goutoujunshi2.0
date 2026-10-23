@@ -1,7 +1,13 @@
-# 狗头军师键盘 2.0
+# 狗头军师 2.0 · 重新构建版
 
-iPhone 原生 Keyboard Extension：复制消息 → 分析 → 点击三条回复之一插入。
+核心流程：**复制对方消息 → 点击键盘面板分析 → 点击一条回复插入**。
 
-本仓库包含 iOS 主 App、Keyboard Extension、自动上下文记忆、DeepSeek 兼容 API 和 GitHub Actions 无签名 IPA 构建。
+- 这是独立的新工程，不使用旧版源码、九键、OCR、词库或 App Group。
+- 最近16条消息（每条最多2000字）保存在**键盘扩展自身** UserDefaults 中，7天过期；同角色/同内容30分钟去重。
+- AI 回复插入后记为未确认发送；在面板里「记为我」可手动补录自己发出的内容。
+- 可新建/切换会话，避免不同联系人串线。手动切换是必要的，iOS 键盘无法自动识别微信联系人。
+- 内置配置 API Key/Endpoint/模型的键盘面板；首次需要打开键盘「允许完全访问」以访问剪贴板和网络。
+- 主 App Bundle ID `com.4OXM.B3xQO`，Extension ID `com.4OXM.B3xQO.keyboard`。**主 App 与扩展必须分别使用匹配的描述文件签名**；重签时只改显示名无妨，不要用主 App 的 profile 签扩展。
+- GitHub Actions 只生成**无签名 IPA**，编译通过不代表在 iPhone 安装成功。请勿把签名证书/API Key 提交到公开仓库。
 
-**注意**：IPA 需独立签名主 App 与键盘扩展；App Group 权限必须与签名能力一致。系统不允许自定义键盘可靠读取微信的完整聊天或发送状态。
+原先云编译通过但安装失败，原因包括之前 IPA 中的扩展元数据缺失和重签名的标识不匹配；本版移除 App Group 以降低签名门槛，但仍需要合法扩展 profile。
