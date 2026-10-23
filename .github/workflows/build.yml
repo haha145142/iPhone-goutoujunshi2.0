@@ -1,39 +1,49 @@
-name: Rebuilt Goutou IPA
+name: Build Jev × 666 Fusion IPA
 on:
   push:
     branches: [main]
   workflow_dispatch:
+permissions:
+  contents: read
 jobs:
   build:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout integration repository
+        uses: actions/checkout@v4
+      - name: Checkout real JevJarvis iOS base
+        uses: actions/checkout@v4
+        with:
+          repository: haha145142/JevJarvis-liuhai-IOS
+          ref: main
+          path: original
+      - name: Apply AI and memory integration
+        run: python3 patches/fusion.py
       - name: Install XcodeGen
         run: brew install xcodegen
-      - name: Generate project
+      - name: Generate real Jev project
+        working-directory: original
         run: xcodegen generate
-      - name: Build iPhone Release
+      - name: Build unsigned iPhone Release
+        working-directory: original
         run: |
-          xcodebuild -project Goutou2.xcodeproj -scheme Goutou2 -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath output CODE_SIGNING_ALLOWED=NO build
-      - name: Validate IPA payload
+          xcodebuild -project JevJarvis.xcodeproj -scheme JevJarvis -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+      - name: Validate real keyboard extension
         run: |
-          APP="output/Build/Products/Release-iphoneos/Goutou2.app"
-          EXT="$APP/PlugIns/GoutouKeyboard.appex"
-          test -f "$APP/Goutou2"
-          test -f "$EXT/GoutouKeyboard"
-          test -f "$EXT/Info.plist"
-          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist" | grep -Fx com.4OXM.B3xQO
-          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$EXT/Info.plist" | grep -Fx com.4OXM.B3xQO.keyboard
-          /usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$EXT/Info.plist" | grep -Fx com.apple.keyboard-service
-          test ! -e "$APP/embedded.mobileprovision"
-          test ! -e "$EXT/embedded.mobileprovision"
-      - name: Create IPA
+          APP="original/build/Build/Products/Release-iphoneos/JevJarvis.app"
+          EXT="$APP/PlugIns/JevKeyboard.appex"
+          test -f "$APP/JevJarvis"
+          test -f "$EXT/JevKeyboard"
+          /usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$EXT/Info.plist" | grep -Fx 'com.apple.keyboard-service'
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$EXT/Info.plist"
+      - name: Package IPA
         run: |
           mkdir Payload
-          cp -R output/Build/Products/Release-iphoneos/Goutou2.app Payload/
-          zip -qr Goutou2-unsigned.ipa Payload
+          cp -R original/build/Build/Products/Release-iphoneos/JevJarvis.app Payload/
+          zip -qr Goutou-Jev666-Fusion-unsigned.ipa Payload
       - uses: actions/upload-artifact@v4
         with:
-          name: Goutou2-Rebuilt-Unsigned-IPA
-          path: Goutou2-unsigned.ipa
+          name: Goutou-Jev666-Fusion-unsigned-IPA
+          path: Goutou-Jev666-Fusion-unsigned.ipa
           retention-days: 30
