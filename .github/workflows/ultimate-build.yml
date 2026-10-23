@@ -1,0 +1,83 @@
+name: Build Doubao Ultimate source ZIP
+on:
+  push:
+    branches: [ultimate]
+    paths:
+      - JevJarvis-Ultimate-source.zip
+      - .github/workflows/ultimate-build.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ultimate-build-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify uploaded Doubao ZIP exists and unpack safely
+        shell: bash
+        run: |
+          test -s JevJarvis-Ultimate-source.zip || { echo "请先上传 JevJarvis-Ultimate-source.zip 到 ultimate 分支根目录"; exit 1; }
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile
+          archive=Path("JevJarvis-Ultimate-source.zip")
+          with zipfile.ZipFile(archive) as z:
+              bad=z.testzip()
+              assert bad is None,bad
+              for item in z.infolist():
+                  p=Path(item.filename)
+                  assert not p.is_absolute() and ".." not in p.parts,"unsafe zip path"
+                  assert p.parts and p.parts[0]=="JevJarvis-Ultimate","unexpected project layout"
+              z.extractall(".")
+          root=Path("JevJarvis-Ultimate")
+          for name in ["project.yml","Keyboard/Sources/KeyboardViewController.swift","Shared/GoutouBrain.swift","Keyboard/GoutouSkill.md"]:
+              assert (root/name).is_file(),name
+          print("DOUBAO_ZIP_OK",archive.stat().st_size)
+          PY
+      - name: Install XcodeGen
+        run: |
+          if ! command -v xcodegen >/dev/null 2>&1; then brew install xcodegen; fi
+      - name: Generate Xcode project
+        working-directory: JevJarvis-Ultimate
+        run: xcodegen generate
+      - name: Build unsigned iOS app and keyboard
+        working-directory: JevJarvis-Ultimate
+        run: |
+          xcodebuild -project JevJarvis.xcodeproj -scheme JevJarvis -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' build
+      - name: Validate and package IPA
+        working-directory: JevJarvis-Ultimate
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import plistlib,zipfile
+          app=Path("build/Build/Products/Release-iphoneos/JevJarvis.app")
+          kb=app/"PlugIns/JevKeyboard.appex"
+          assert (app/"JevJarvis").is_file(),"missing app executable"
+          assert (kb/"JevKeyboard").is_file(),"missing keyboard executable"
+          assert (kb/"GoutouSkill.md").is_file(),"missing keyboard skill resource"
+          main=plistlib.loads((app/"Info.plist").read_bytes())
+          ext=plistlib.loads((kb/"Info.plist").read_bytes())
+          assert main["CFBundleIdentifier"]=="com.jevchat.jarvis"
+          assert ext["CFBundleIdentifier"]=="com.jevchat.jarvis.keyboard"
+          assert ext["NSExtension"]["NSExtensionPointIdentifier"]=="com.apple.keyboard-service"
+          assert len(list((app/"KnowledgeLibrary/practical").glob("*.md")))>=20
+          assert len(list((app/"KnowledgeLibrary/tong").glob("*.md")))>=6
+          filename=Path("JevJarvis-Doubao-Ultimate-unsigned.ipa")
+          with zipfile.ZipFile(filename,"w",compression=zipfile.ZIP_DEFLATED,compresslevel=6) as z:
+              for file in app.rglob("*"):
+                  if file.is_file():z.write(file,Path("Payload")/app.name/file.relative_to(app))
+          with zipfile.ZipFile(filename) as z:
+              assert z.testzip() is None
+              assert "Payload/JevJarvis.app/PlugIns/JevKeyboard.appex/GoutouSkill.md" in z.namelist()
+          print("IPA_VALID",filename.stat().st_size)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: JevJarvis-Doubao-Ultimate-unsigned-IPA
+          path: JevJarvis-Ultimate/JevJarvis-Doubao-Ultimate-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 30
