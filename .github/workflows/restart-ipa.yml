@@ -1,0 +1,90 @@
+name: Jev Restart v3 - unsigned IPA
+on:
+  push:
+    branches: [restart-v3]
+    paths:
+      - JevJarvis-Restart-source.zip
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: jev-restart-v3
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate and extract the exact source
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import pathlib, zipfile, hashlib, sys
+          archive=pathlib.Path("JevJarvis-Restart-source.zip")
+          if not archive.is_file(): sys.exit("缺少 JevJarvis-Restart-source.zip：请上传重来专用包")
+          digest=hashlib.sha256(archive.read_bytes()).hexdigest()
+          want="9829e409d5b35c280c816541f9a051f4056382cb8c342902a65df5fbec1f1666"
+          print("SHA256",digest)
+          if digest!=want: sys.exit("ZIP 与本次修复后的源码不一致；请上传重来专用包")
+          with zipfile.ZipFile(archive) as z:
+              if z.testzip():sys.exit("ZIP 校验失败")
+              for item in z.infolist():
+                  p=pathlib.PurePosixPath(item.filename)
+                  if p.is_absolute() or ".." in p.parts or p.parts[0]!="JevJarvis-Ultimate": sys.exit("ZIP path unsafe")
+              z.extractall(".")
+          root=pathlib.Path("JevJarvis-Ultimate")
+          for filename in ["project.yml","Shared/GoutouKnowledgeBuiltIn.swift","Shared/JevContext.swift","Keyboard/Sources/KeyboardViewController.swift","Keyboard/GoutouSkill.md"]:
+              if not (root/filename).is_file():sys.exit("缺少: "+filename)
+          assert len(list((root/"GoutouKnowledge").rglob("*.md")))==43
+          assert len(list((root/"App/Resources/KnowledgeLibrary").rglob("*.md")))==30
+          print("ZIP_AND_RESOURCES_OK")
+          PY
+      - name: Run context + Skill + knowledge smoke tests
+        working-directory: JevJarvis-Ultimate
+        run: |
+          swiftc -O -o /tmp/jev-restart-smoke tests/RestartSmoke.swift Shared/GoutouKnowledge.swift Shared/GoutouKnowledgeBuiltIn.swift Shared/GoutouSkillFusion.swift Shared/JevContext.swift
+          /tmp/jev-restart-smoke
+      - name: Generate Xcode project
+        working-directory: JevJarvis-Ultimate
+        run: |
+          if ! command -v xcodegen >/dev/null 2>&1; then brew install xcodegen; fi
+          xcodegen generate
+      - name: Build unsigned main app and keyboard extension
+        working-directory: JevJarvis-Ultimate
+        run: |
+          xcodebuild -project JevJarvis.xcodeproj -scheme JevJarvis -configuration Release -sdk iphoneos -destination "generic/platform=iOS" -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+      - name: Validate and package IPA
+        working-directory: JevJarvis-Ultimate
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile, plistlib
+          app=Path("build/Build/Products/Release-iphoneos/JevJarvis.app")
+          kb=app/"PlugIns/JevKeyboard.appex"
+          assert (app/"JevJarvis").is_file(),"Missing main executable"
+          assert (kb/"JevKeyboard").is_file(),"Missing keyboard executable"
+          assert (kb/"GoutouSkill.md").is_file(),"Missing 666 Skill"
+          assert len(list((app/"KnowledgeLibrary/practical").glob("*.md")))>=23,"Missing practical knowledge"
+          assert len(list((app/"KnowledgeLibrary/tong").glob("*.md")))>=7,"Missing Tong knowledge"
+          assert len(list((app/"GoutouKnowledge").rglob("*.md")))>=43,"Missing source knowledge"
+          main=plistlib.loads((app/"Info.plist").read_bytes())
+          ext=plistlib.loads((kb/"Info.plist").read_bytes())
+          assert main["CFBundleIdentifier"]=="com.jevchat.jarvis",main["CFBundleIdentifier"]
+          assert ext["CFBundleIdentifier"]=="com.jevchat.jarvis.keyboard",ext["CFBundleIdentifier"]
+          assert ext["NSExtension"]["NSExtensionPointIdentifier"]=="com.apple.keyboard-service"
+          target=Path("JevJarvis-Restart-unsigned.ipa")
+          with zipfile.ZipFile(target,"w",zipfile.ZIP_DEFLATED,compresslevel=6) as z:
+              for f in app.rglob("*"):
+                  if f.is_file():z.write(f,Path("Payload")/app.name/f.relative_to(app))
+          with zipfile.ZipFile(target) as z:
+              assert z.testzip() is None
+              assert "Payload/JevJarvis.app/PlugIns/JevKeyboard.appex/GoutouSkill.md" in z.namelist()
+          print("IPA_VALID",target.stat().st_size)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: JevJarvis-Restart-unsigned-IPA
+          path: JevJarvis-Ultimate/JevJarvis-Restart-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 30
