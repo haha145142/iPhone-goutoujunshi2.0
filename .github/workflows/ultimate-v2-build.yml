@@ -1,0 +1,68 @@
+name: Build JevJarvis Ultimate v2 (phone-upload source)
+on:
+  push:
+    branches: [ultimate-v2]
+    paths:
+      - .build-input/ready-v2.txt
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: jev-ultimate-v2-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  unsigned-ipa:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore exact user's source files and verify checksums
+        run: python3 tools/restore_ultimate_v2.py
+      - name: Install XcodeGen
+        run: |
+          command -v xcodegen >/dev/null 2>&1 || brew install xcodegen
+      - name: Generate project
+        working-directory: JevJarvis-Ultimate
+        run: xcodegen generate
+      - name: Build iPhone app and both extensions without signing
+        working-directory: JevJarvis-Ultimate
+        run: |
+          xcodebuild -project JevJarvis.xcodeproj -scheme JevJarvis -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' build
+      - name: Validate App, keyboard, live extension, skills and IPA
+        working-directory: JevJarvis-Ultimate
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import plistlib,zipfile
+          app=Path("build/Build/Products/Release-iphoneos/JevJarvis.app")
+          assert (app/"JevJarvis").is_file(), "Main App executable missing"
+          kb=app/"PlugIns/JevKeyboard.appex"
+          lv=app/"PlugIns/JevLive.appex"
+          for path,exe,ident,point in (
+            (kb,"JevKeyboard","com.jevchat.jarvis.keyboard","com.apple.keyboard-service"),
+            (lv,"JevLive","com.jevchat.jarvis.live","com.apple.broadcast-services-upload")):
+              assert (path/exe).is_file(), f"Missing executable: {exe}"
+              info=plistlib.loads((path/"Info.plist").read_bytes())
+              assert info["CFBundleIdentifier"]==ident,ident
+              assert info["NSExtension"]["NSExtensionPointIdentifier"]==point,point
+          info=plistlib.loads((app/"Info.plist").read_bytes())
+          assert info["CFBundleIdentifier"]=="com.jevchat.jarvis"
+          assert (kb/"GoutouSkill.md").is_file(), "Keyboard Skill missing"
+          assert len(list((app/"KnowledgeLibrary/practical").glob("*.md")))>=23
+          assert len(list((app/"KnowledgeLibrary/tong").glob("*.md")))>=7
+          ipa=Path("JevJarvis-Ultimate-unsigned.ipa")
+          with zipfile.ZipFile(ipa,"w",compression=zipfile.ZIP_DEFLATED,compresslevel=6) as z:
+              for f in app.rglob("*"):
+                  if f.is_file():z.write(f,Path("Payload")/app.name/f.relative_to(app))
+          with zipfile.ZipFile(ipa) as z:
+              assert z.testzip() is None
+              assert "Payload/JevJarvis.app/PlugIns/JevKeyboard.appex/JevKeyboard" in z.namelist()
+              assert "Payload/JevJarvis.app/PlugIns/JevLive.appex/JevLive" in z.namelist()
+          print("IPA verification passed",ipa.stat().st_size)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: JevJarvis-Ultimate-unsigned-ipa
+          path: JevJarvis-Ultimate/JevJarvis-Ultimate-unsigned.ipa
+          retention-days: 30
+          if-no-files-found: error
