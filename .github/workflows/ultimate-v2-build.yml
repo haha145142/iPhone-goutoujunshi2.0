@@ -1,9 +1,9 @@
-name: Build JevJarvis Ultimate v2 (phone-upload source)
+name: Build JevJarvis Ultimate v2 (phone-upload)
 on:
   push:
     branches: [ultimate-v2]
     paths:
-      - .build-input/ready-v2.txt
+      - JevJarvis-Ultimate-phone-upload.zip
   workflow_dispatch:
 permissions:
   contents: read
@@ -16,53 +16,75 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
-      - name: Restore exact user's source files and verify checksums
-        run: python3 tools/restore_ultimate_v2.py
+      - name: Unpack and verify uploaded phone source ZIP
+        run: |
+          python3 - <<'PY'
+          from zipfile import ZipFile
+          from pathlib import Path
+          import hashlib
+          src=Path("JevJarvis-Ultimate-phone-upload.zip")
+          assert src.is_file(), "Missing ZIP: upload JevJarvis-Ultimate-phone-upload.zip at repository root"
+          expect="1f9caab82e1903ee6fb8d3b6253a96ad372d6812553c04e96a947480f7191e69"
+          assert hashlib.sha256(src.read_bytes()).hexdigest()==expect,"Uploaded ZIP differs from the attachment"
+          root=Path("JevJarvis-Ultimate")
+          with ZipFile(src) as z:
+              assert z.testzip() is None, "Corrupt ZIP"
+              files=[i for i in z.infolist() if not i.is_dir()]
+              assert len(files)==76, f"Expected 76 files, got {len(files)}"
+              for entry in z.infolist():
+                  path=Path(entry.filename)
+                  assert not path.is_absolute() and ".." not in path.parts, "Unsafe path in ZIP"
+              z.extractall(root)
+          for file in ("project.yml","Keyboard/GoutouSkill.md","Broadcast/Sources/LiveBroadcastHandler.swift","Shared/JevLive.swift","Shared/JevContext.swift"):
+              assert (root/file).is_file(),file
+          print("Verified exact uploaded mobile source: 76 files")
+          PY
       - name: Install XcodeGen
         run: |
           command -v xcodegen >/dev/null 2>&1 || brew install xcodegen
       - name: Generate project
         working-directory: JevJarvis-Ultimate
         run: xcodegen generate
-      - name: Build iPhone app and both extensions without signing
+      - name: Build unsigned app and keyboard/live extensions
         working-directory: JevJarvis-Ultimate
         run: |
           xcodebuild -project JevJarvis.xcodeproj -scheme JevJarvis -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' build
-      - name: Validate App, keyboard, live extension, skills and IPA
+      - name: Validate app and both extensions and package IPA
         working-directory: JevJarvis-Ultimate
         run: |
           python3 - <<'PY'
           from pathlib import Path
           import plistlib,zipfile
           app=Path("build/Build/Products/Release-iphoneos/JevJarvis.app")
-          assert (app/"JevJarvis").is_file(), "Main App executable missing"
-          kb=app/"PlugIns/JevKeyboard.appex"
-          lv=app/"PlugIns/JevLive.appex"
-          for path,exe,ident,point in (
-            (kb,"JevKeyboard","com.jevchat.jarvis.keyboard","com.apple.keyboard-service"),
-            (lv,"JevLive","com.jevchat.jarvis.live","com.apple.broadcast-services-upload")):
-              assert (path/exe).is_file(), f"Missing executable: {exe}"
-              info=plistlib.loads((path/"Info.plist").read_bytes())
-              assert info["CFBundleIdentifier"]==ident,ident
-              assert info["NSExtension"]["NSExtensionPointIdentifier"]==point,point
+          assert (app/"JevJarvis").is_file(), "Missing main executable"
+          extensions=(
+            ("JevKeyboard","com.jevchat.jarvis.keyboard","com.apple.keyboard-service"),
+            ("JevLive","com.jevchat.jarvis.live","com.apple.broadcast-services-upload")
+          )
+          for exe,identifier,point in extensions:
+              ext=app/"PlugIns"/(exe+".appex")
+              assert (ext/exe).is_file(), "Missing extension executable: "+exe
+              info=plistlib.loads((ext/"Info.plist").read_bytes())
+              assert info["CFBundleIdentifier"]==identifier
+              assert info["NSExtension"]["NSExtensionPointIdentifier"]==point
           info=plistlib.loads((app/"Info.plist").read_bytes())
           assert info["CFBundleIdentifier"]=="com.jevchat.jarvis"
-          assert (kb/"GoutouSkill.md").is_file(), "Keyboard Skill missing"
+          assert (app/"PlugIns/JevKeyboard.appex/GoutouSkill.md").is_file()
           assert len(list((app/"KnowledgeLibrary/practical").glob("*.md")))>=23
           assert len(list((app/"KnowledgeLibrary/tong").glob("*.md")))>=7
-          ipa=Path("JevJarvis-Ultimate-unsigned.ipa")
-          with zipfile.ZipFile(ipa,"w",compression=zipfile.ZIP_DEFLATED,compresslevel=6) as z:
-              for f in app.rglob("*"):
-                  if f.is_file():z.write(f,Path("Payload")/app.name/f.relative_to(app))
-          with zipfile.ZipFile(ipa) as z:
-              assert z.testzip() is None
-              assert "Payload/JevJarvis.app/PlugIns/JevKeyboard.appex/JevKeyboard" in z.namelist()
+          out=Path("JevJarvis-Ultimate-unsigned.ipa")
+          with zipfile.ZipFile(out,"w",compression=zipfile.ZIP_DEFLATED,compresslevel=6) as z:
+              for file in app.rglob("*"):
+                  if file.is_file():z.write(file,Path("Payload")/app.name/file.relative_to(app))
+          with zipfile.ZipFile(out) as z:
+              assert z.testzip() is None, "Corrupt IPA"
               assert "Payload/JevJarvis.app/PlugIns/JevLive.appex/JevLive" in z.namelist()
-          print("IPA verification passed",ipa.stat().st_size)
+              assert "Payload/JevJarvis.app/PlugIns/JevKeyboard.appex/JevKeyboard" in z.namelist()
+          print("IPA verified:",out.stat().st_size,"bytes")
           PY
       - uses: actions/upload-artifact@v4
         with:
           name: JevJarvis-Ultimate-unsigned-ipa
           path: JevJarvis-Ultimate/JevJarvis-Ultimate-unsigned.ipa
-          retention-days: 30
           if-no-files-found: error
+          retention-days: 30
