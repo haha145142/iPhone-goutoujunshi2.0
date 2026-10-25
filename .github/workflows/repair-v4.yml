@@ -26,7 +26,7 @@ jobs:
           if not p.is_file(): sys.exit("Missing JevJarvis-Repair-v4-source.zip")
           sha=hashlib.sha256(p.read_bytes()).hexdigest()
           print("source_sha256",sha)
-          assert sha=="3522d2ea0934244fda270d9b305a55a7c8b36c5c31b9ca6502b7d119f37bc97e","Incorrect ZIP: upload the v4 repair package"
+          assert sha=="31bef683bd6c0f3670008fb00e608db43731f185d1e9020c5896eb690070d6ea","Incorrect ZIP: upload the v4 repair package"
           with zipfile.ZipFile(p) as z:
               assert z.testzip() is None
               for item in z.infolist():
