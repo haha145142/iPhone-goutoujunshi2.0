@@ -1,0 +1,92 @@
+name: Jev Repair v4 - source check and unsigned IPA
+on:
+  push:
+    branches: [repair-v4]
+    paths:
+      - JevJarvis-Repair-v4-source.zip
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: jev-repair-v4
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify exact uploaded source ZIP
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path, PurePosixPath
+          import hashlib, zipfile, sys
+          p=Path("JevJarvis-Repair-v4-source.zip")
+          if not p.is_file(): sys.exit("Missing JevJarvis-Repair-v4-source.zip")
+          sha=hashlib.sha256(p.read_bytes()).hexdigest()
+          print("source_sha256",sha)
+          assert sha=="3522d2ea0934244fda270d9b305a55a7c8b36c5c31b9ca6502b7d119f37bc97e","Incorrect ZIP: upload the v4 repair package"
+          with zipfile.ZipFile(p) as z:
+              assert z.testzip() is None
+              for item in z.infolist():
+                  target=PurePosixPath(item.filename)
+                  assert not target.is_absolute() and ".." not in target.parts
+                  assert target.parts[0]=="JevJarvis-Ultimate"
+              z.extractall(".")
+          src=Path("JevJarvis-Ultimate")
+          for path in ["project.yml","Keyboard/Sources/KeyboardViewController.swift","Shared/GoutouKnowledgeEmbedded.swift","Shared/JevContext.swift","tests/KnowledgeSmoke.swift","tests/ContextSmoke.swift"]:
+              assert (src/path).is_file(),path
+          assert len(list((src/"GoutouKnowledge").rglob("*.md")))==43
+          assert len(list((src/"App/Resources/KnowledgeLibrary").rglob("*.md")))==30
+          print("SOURCE_INTEGRITY_OK")
+          PY
+      - name: Compile and run live Swift smoke tests
+        working-directory: JevJarvis-Ultimate
+        run: |
+          swiftc -O Shared/GoutouKnowledge.swift Shared/GoutouKnowledgeEmbedded.swift tests/KnowledgeSmoke.swift -o /tmp/jev-knowledge-smoke
+          /tmp/jev-knowledge-smoke
+          swiftc -O Shared/JevContext.swift tests/ContextSmoke.swift -o /tmp/jev-context-smoke
+          /tmp/jev-context-smoke
+      - name: Generate iOS project
+        working-directory: JevJarvis-Ultimate
+        run: |
+          if ! command -v xcodegen >/dev/null 2>&1; then brew install xcodegen; fi
+          xcodegen generate
+      - name: Compile main app and keyboard extension
+        working-directory: JevJarvis-Ultimate
+        run: |
+          xcodebuild -project JevJarvis.xcodeproj -scheme JevJarvis -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' build
+      - name: Validate payload and package unsigned IPA
+        working-directory: JevJarvis-Ultimate
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile,plistlib
+          app=Path("build/Build/Products/Release-iphoneos/JevJarvis.app")
+          kb=app/"PlugIns/JevKeyboard.appex"
+          assert (app/"JevJarvis").is_file(),"Missing main app executable"
+          assert (kb/"JevKeyboard").is_file(),"Missing keyboard extension executable"
+          assert (kb/"GoutouSkill.md").is_file(),"Missing keyboard Skill"
+          assert len(list((app/"GoutouKnowledge").rglob("*.md"))) == 43,"Missing 43 source documents"
+          assert len(list((app/"KnowledgeLibrary").rglob("*.md"))) == 30,"Missing 30 additional documents"
+          main=plistlib.loads((app/"Info.plist").read_bytes())
+          ext=plistlib.loads((kb/"Info.plist").read_bytes())
+          assert main["CFBundleIdentifier"] == "com.jevchat.jarvis"
+          assert ext["CFBundleIdentifier"] == "com.jevchat.jarvis.keyboard"
+          assert ext["NSExtension"]["NSExtensionPointIdentifier"] == "com.apple.keyboard-service"
+          out=Path("JevJarvis-Repair-v4-unsigned.ipa")
+          with zipfile.ZipFile(out,"w",zipfile.ZIP_DEFLATED,compresslevel=6) as z:
+              for item in app.rglob("*"):
+                  if item.is_file(): z.write(item,Path("Payload")/app.name/item.relative_to(app))
+          with zipfile.ZipFile(out) as z:
+              assert z.testzip() is None
+              assert "Payload/JevJarvis.app/PlugIns/JevKeyboard.appex/GoutouSkill.md" in z.namelist()
+          print("IPA_VALID",out.stat().st_size)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: JevJarvis-Repair-v4-unsigned-IPA
+          path: JevJarvis-Ultimate/JevJarvis-Repair-v4-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 30
